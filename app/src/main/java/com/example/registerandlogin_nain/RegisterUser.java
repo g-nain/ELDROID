@@ -27,8 +27,12 @@ import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QuerySnapshot;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class RegisterUser extends AppCompatActivity {
 
+    boolean checker;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +52,7 @@ public class RegisterUser extends AppCompatActivity {
 
         String status = "active";
         String confirmPassword = confirmPassInput.getText().toString();
+        checker = false;
 
         userInput.setEnabled(false);
         passwordInput.setEnabled(false);
@@ -76,6 +81,26 @@ public class RegisterUser extends AppCompatActivity {
             }
         });
 
+            registerBtn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (empIdInput != null && !TextUtils.isEmpty(empIdInput.getText().toString()) &&
+                            userInput != null && !TextUtils.isEmpty(userInput.getText().toString())&&
+                            passwordInput != null && !TextUtils.isEmpty(passwordInput.getText().toString())&&
+                            confirmPassInput != null && !TextUtils.isEmpty( confirmPassInput.getText().toString())) {
+                        String status = "active";
+                        String password = passwordInput.getText().toString();
+                        String empId = empIdInput.getText().toString();
+                        String user = userInput.getText().toString();
+                        storeUserData(empId, user, password, status);
+                    }
+                    else{
+                        Toast.makeText(RegisterUser.this, "Failed", Toast.LENGTH_SHORT).show();
+                    }
+
+                }
+            });
+
             empIdInput.addTextChangedListener(new TextWatcher() {
                 @Override
                 public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -92,7 +117,6 @@ public class RegisterUser extends AppCompatActivity {
                     String empId = s.toString().trim();
                     EmpIdValidationThread idValidator = new EmpIdValidationThread(empId, status, checkSwitch, checkIdMsg);
                     idValidator.start();
-
 
                 }
             });
@@ -144,11 +168,16 @@ public class RegisterUser extends AppCompatActivity {
                         checkPassMsg.setTextColor(Color.RED);
                         return;
                     }
+                    passwordValidationThread passwordValidator = new passwordValidationThread(password);
+                    passwordValidator.start();
+                    try {
+                        // Wait for the thread to complete
+                        passwordValidator.join();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
 
-                    Handler handler = new Handler(Looper.getMainLooper()) {
-                        @Override
-                        public void handleMessage(Message msg) {
-                            boolean isValid = msg.getData().getBoolean("isValid");
+                    boolean isValid = passwordValidator.isValid();
                             if (isValid) {
                                 checkPassMsg.setVisibility(View.VISIBLE);
                                 checkPassMsg.setText("Password Strong");
@@ -158,11 +187,6 @@ public class RegisterUser extends AppCompatActivity {
                                 checkPassMsg.setText("Password too weak!");
                                 checkPassMsg.setTextColor(Color.RED);
                             }
-
-                        }
-                    };
-                    passwordValidationThread passwordValidator = new passwordValidationThread(password, handler);
-                    passwordValidator.start();
 
                 }
             });
@@ -203,8 +227,6 @@ public class RegisterUser extends AppCompatActivity {
                     }
 
                     boolean isValid = confirmPassValidator.isValid();
-                    Toast.makeText(RegisterUser.this, password, Toast.LENGTH_SHORT).show();
-
                     if (isValid == false) {
                         checkConfirmPassMsg.setVisibility(View.VISIBLE);
                         checkConfirmPassMsg.setText("Passwords do not match");
@@ -216,7 +238,34 @@ public class RegisterUser extends AppCompatActivity {
 
                 }
             });
+
+
         }
+    public void storeUserData(String employeeId, String userName, String password, String status) {
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        Map<String, Object> userData = new HashMap<>();
+        userData.put("employeeId", employeeId);
+        userData.put("username", userName);
+        userData.put("password", password);
+        userData.put("status", status);
+
+        db.collection("Users").document()
+                .set(userData)
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        Toast.makeText(RegisterUser.this, "Stored Successfully", Toast.LENGTH_SHORT).show();
+                        // data stored successfully
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        // error occurred while storing data
+                        Toast.makeText(RegisterUser.this, "Error storing data", Toast.LENGTH_SHORT).show();
+                    }
+                });
+    }
 }
 class EmpIdValidationThread extends Thread{
     String empId;
@@ -357,17 +406,17 @@ class UserNameValidationThread extends Thread{
                 });
     }
 
+
+
 }
 
 class passwordValidationThread extends Thread {
     String password;
     boolean isValid;
-    Handler handler;
 
-    passwordValidationThread(String password, Handler handler){
+    passwordValidationThread(String password){
         this.password = password;
         this.isValid = false;
-        this.handler = handler;
     }
 
     @Override
@@ -375,11 +424,9 @@ class passwordValidationThread extends Thread {
         if (password.matches("^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])(?=.*[@#$%^&+=])(?=\\S+$).{8,}$")) {
             isValid = true;
         }
-        Message msg = handler.obtainMessage();
-        Bundle bundle = new Bundle();
-        bundle.putBoolean("isValid", isValid);
-        msg.setData(bundle);
-        handler.sendMessage(msg);
+    }
+    public boolean isValid() {
+        return isValid;
     }
 }
 
